@@ -1,0 +1,37 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: pip
+
+    - name: Install requirements
+      run: python3 -m pip install -r requirements.txt pytest
+
+    - name: Run tests
+      run: python3 -m pytest -q tests
+
+    - name: Render demo images
+      run: python3 generate_images.py --demo
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: preview-images
+        path: preview/

@@ -134,3 +134,6 @@ dmypy.json
 
 # PyCharm project files
 .idea
+
+# Local previews rendered with `generate_images.py --demo`
+preview/

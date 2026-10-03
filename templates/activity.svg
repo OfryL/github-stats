@@ -1,0 +1,57 @@
+<svg width="720" height="220" viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="activity-title">
+<title id="activity-title">{{ name }}'s contribution activity</title>
+<style>
+{{ theme }}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  fill: var(--title);
+}
+
+.stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  fill: var(--strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-label {
+  font-size: 12px;
+  fill: var(--text);
+}
+
+.label {
+  font-size: 10px;
+  fill: var(--text);
+}
+
+.day {
+  rx: 2px;
+  ry: 2px;
+  stroke: var(--border);
+  stroke-opacity: 0.3;
+  stroke-width: 0.5px;
+}
+
+.level-0 { fill: var(--level-0); }
+.level-1 { fill: var(--level-1); }
+.level-2 { fill: var(--level-2); }
+.level-3 { fill: var(--level-3); }
+.level-4 { fill: var(--level-4); }
+
+.week {
+  opacity: 0;
+  animation-name: fadeIn;
+  animation-duration: 0.6s;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+</style>
+<rect x="5" y="5" id="background" />
+<text x="{{ left }}" y="34" class="title">Contribution Activity</text>
+{{ stats }}
+{{ months }}
+{{ heatmap }}
+{{ legend }}
+</svg>
