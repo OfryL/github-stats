@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import asyncio
+import datetime
 import os
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -43,7 +44,7 @@ class Queries(object):
             result = await r.json()
             if result is not None:
                 return result
-        except:
+        except Exception:
             print("aiohttp failed for GraphQL query")
             # Fall back on non-async requests
             async with self.semaphore:
@@ -78,14 +79,14 @@ class Queries(object):
                                                params=tuple(params.items()))
                 if r.status == 202:
                     # print(f"{path} returned 202. Retrying...")
-                    print(f"A path returned 202. Retrying...")
+                    print("A path returned 202. Retrying...")
                     await asyncio.sleep(2)
                     continue
 
                 result = await r.json()
                 if result is not None:
                     return result
-            except:
+            except Exception:
                 print("aiohttp failed for rest query")
                 # Fall back on non-async requests
                 async with self.semaphore:
@@ -93,7 +94,7 @@ class Queries(object):
                                      headers=headers,
                                      params=tuple(params.items()))
                     if r.status_code == 202:
-                        print(f"A path returned 202. Retrying...")
+                        print("A path returned 202. Retrying...")
                         await asyncio.sleep(2)
                         continue
                     elif r.status_code == 200:
@@ -214,6 +215,30 @@ query {
     }}
 """
 
+    @staticmethod
+    def contrib_calendar() -> str:
+        """
+        :return: GraphQL query for the daily contribution calendar of the past
+                 year (the same data as the green squares on a GitHub profile)
+        """
+        return """
+query {
+  viewer {
+    contributionsCollection {
+      contributionCalendar {
+        totalContributions
+        weeks {
+          contributionDays {
+            date
+            contributionCount
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
     @classmethod
     def all_contribs(cls, years: List[str]) -> str:
         """
@@ -253,6 +278,8 @@ class Stats(object):
         self._repos = None
         self._lines_changed = None
         self._views = None
+        self._calendar = None
+        self._stats_task = None
 
     async def to_str(self) -> str:
         """
@@ -277,8 +304,14 @@ Languages:
 
     async def get_stats(self) -> None:
         """
-        Get lots of summary statistics using one big query. Sets many attributes
+        Get lots of summary statistics using one big query. Sets many
+        attributes. Concurrent callers share a single fetch.
         """
+        if self._stats_task is None:
+            self._stats_task = asyncio.ensure_future(self._fetch_stats())
+        await self._stats_task
+
+    async def _fetch_stats(self) -> None:
         self._stargazers = 0
         self._forks = 0
         self._languages = dict()
@@ -355,7 +388,8 @@ Languages:
         #       specific filetypes
         langs_total = sum([v.get("size", 0) for v in self._languages.values()])
         for k, v in self._languages.items():
-            v["prop"] = 100 * (v.get("size", 0) / langs_total)
+            v["prop"] = (100 * (v.get("size", 0) / langs_total)
+                         if langs_total else 0)
 
     @property
     async def name(self) -> str:
@@ -453,17 +487,23 @@ Languages:
         """
         if self._lines_changed is not None:
             return self._lines_changed
+        repos = list(await self.repos)
+        responses = await asyncio.gather(*(
+            self.queries.query_rest(f"/repos/{repo}/stats/contributors")
+            for repo in repos
+        ))
         additions = 0
         deletions = 0
-        for repo in await self.repos:
-            r = await self.queries.query_rest(f"/repos/{repo}/stats/contributors")
+        for r in responses:
+            if not isinstance(r, list):
+                continue
             for author_obj in r:
                 # Handle malformed response from the API by skipping this repo
                 if (not isinstance(author_obj, dict)
                         or not isinstance(author_obj.get("author", {}), dict)):
                     continue
                 author = author_obj.get("author", {}).get("login", "")
-                if author != self.username:
+                if author.lower() != (self.username or "").lower():
                     continue
 
                 for week in author_obj.get("weeks", []):
@@ -482,14 +522,81 @@ Languages:
         if self._views is not None:
             return self._views
 
+        repos = list(await self.repos)
+        responses = await asyncio.gather(*(
+            self.queries.query_rest(f"/repos/{repo}/traffic/views")
+            for repo in repos
+        ))
         total = 0
-        for repo in await self.repos:
-            r = await self.queries.query_rest(f"/repos/{repo}/traffic/views")
+        for r in responses:
+            if not isinstance(r, dict):
+                continue
             for view in r.get("views", []):
                 total += view.get("count", 0)
 
         self._views = total
         return total
+
+    @property
+    async def contribution_calendar(self) -> List[Tuple[datetime.date, int]]:
+        """
+        :return: chronological list of (date, contribution count) pairs for
+                 roughly the past year
+        """
+        if self._calendar is not None:
+            return self._calendar
+
+        weeks = (await self.queries.query(Queries.contrib_calendar())) \
+            .get("data", {}) \
+            .get("viewer", {}) \
+            .get("contributionsCollection", {}) \
+            .get("contributionCalendar", {}) \
+            .get("weeks", [])
+        days = []
+        for week in weeks:
+            for day in week.get("contributionDays", []):
+                try:
+                    date = datetime.date.fromisoformat(day.get("date", ""))
+                except ValueError:
+                    continue
+                days.append((date, day.get("contributionCount", 0)))
+        days.sort()
+        self._calendar = days
+        return self._calendar
+
+    @property
+    async def streaks(self) -> Dict[str, int]:
+        """
+        :return: current and longest daily contribution streaks, computed from
+                 the contribution calendar
+        """
+        return compute_streaks(await self.contribution_calendar)
+
+
+def compute_streaks(days: List[Tuple[datetime.date, int]]) -> Dict[str, int]:
+    """
+    Compute contribution streaks from a chronological daily calendar. The
+    current streak is not broken by a quiet "today", since the day may not be
+    over yet.
+    :param days: chronological list of (date, contribution count) pairs
+    :return: dict with "current" and "longest" streak lengths in days
+    """
+    longest = 0
+    run = 0
+    for _, count in days:
+        run = run + 1 if count > 0 else 0
+        longest = max(longest, run)
+
+    current = 0
+    remaining = list(days)
+    if remaining and remaining[-1][1] == 0:
+        remaining.pop()
+    for _, count in reversed(remaining):
+        if count == 0:
+            break
+        current += 1
+
+    return {"current": current, "longest": longest}
 
 
 ###############################################################################

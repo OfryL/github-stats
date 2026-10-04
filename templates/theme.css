@@ -1,0 +1,69 @@
+:root, svg {
+  --bg: #ffffff;
+  --border: #d0d7de;
+  --title: #0969da;
+  --text: #57606a;
+  --strong: #24292f;
+  --track: #eaeef2;
+  --level-0: #ebedf0;
+  --level-1: #9be9a8;
+  --level-2: #40c463;
+  --level-3: #30a14e;
+  --level-4: #216e39;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root, svg {
+    --bg: #0d1117;
+    --border: #30363d;
+    --title: #58a6ff;
+    --text: #8b949e;
+    --strong: #e6edf3;
+    --track: #21262d;
+    --level-0: #161b22;
+    --level-1: #0e4429;
+    --level-2: #006d32;
+    --level-3: #26a641;
+    --level-4: #39d353;
+  }
+}
+
+svg {
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif, Apple Color Emoji, Segoe UI Emoji;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+#background {
+  width: calc(100% - 10px);
+  height: calc(100% - 10px);
+  fill: var(--bg);
+  stroke: var(--border);
+  stroke-width: 1px;
+  rx: 6px;
+  ry: 6px;
+}
+
+.octicon {
+  fill: var(--text);
+}
+
+@keyframes slideIn {
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}
